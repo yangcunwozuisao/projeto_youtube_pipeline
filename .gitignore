@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Env
+.env
+yt_api_key.txt
+
+# Data
+outputs/
+data/
+
+# Cache
+.cache/
