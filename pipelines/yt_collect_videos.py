@@ -4,8 +4,28 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from tqdm import tqdm
 
+from tools.utils_incremental import get_last_published_at
+
 API_KEY = "AIzaSyBjHKoD9uHaeNVIcU33CBVXw02x9xf7evU"
-QUERY = "unboxing"
+QUERIES = [
+    "iphone unboxing",
+    "samsung unboxing",
+    "xiaomi unboxing",
+    "motorola unboxing",
+    "realme unboxing",
+    "oppo unboxing",
+    "vivo unboxing",
+    "oneplus unboxing",
+    "huawei unboxing",
+    "google pixel unboxing",
+    "asus rog phone unboxing",
+    "nothing phone unboxing",
+    "infinix unboxing",
+    "tecno unboxing",
+    "smartphone review",
+    "celular review",
+    "comparativo smartphones"
+]
 PUBLISHED_AFTER = "2015-01-01T00:00:00Z"
 PUBLISHED_BEFORE = "2026-12-31T23:59:59Z"
 REGION_CODE = "BR"
@@ -22,39 +42,85 @@ def build_client():
     )
 
 
+def search_one_query(youtube, query, max_items, published_after):
+    items = []
+    next_page = None
+
+    while len(items) < max_items:
+        remaining = max_items - len(items)
+
+        resp = youtube.search().list(
+            part="id,snippet",
+            q=query,
+            type="video",
+            maxResults=min(50, remaining),
+            order="date",
+            relevanceLanguage=LANG_HINT,
+            regionCode=REGION_CODE,
+            publishedAfter=published_after,
+            publishedBefore=PUBLISHED_BEFORE,
+            pageToken=next_page
+        ).execute()
+
+        batch = [
+            it for it in resp.get("items", [])
+            if it.get("id", {}).get("videoId")
+        ]
+
+        if not batch:
+            break
+
+        items.extend(batch)
+
+        next_page = resp.get("nextPageToken")
+        if not next_page:
+            break
+
+        time.sleep(0.2)
+
+    return items
+
+
 def search_all(youtube):
-    items, next_page = [], None
+    all_items = []
 
-    with tqdm(total=MAX_TOTAL, desc="search") as bar:
-        while len(items) < MAX_TOTAL:
-            remaining = MAX_TOTAL - len(items)
+    last_date = get_last_published_at()
+    published_after = last_date if last_date else PUBLISHED_AFTER
 
-            resp = youtube.search().list(
-                part="id,snippet",
-                q=QUERY,
-                type="video",
-                maxResults=min(50, remaining),
-                order="relevance",
-                relevanceLanguage=LANG_HINT,
-                regionCode=REGION_CODE,
-                publishedAfter=PUBLISHED_AFTER,
-                publishedBefore=PUBLISHED_BEFORE,
-                pageToken=next_page
-            ).execute()
+    if last_date:
+        print(f"[INFO] Modo incremental ativado -> coletando vídeos após {last_date}")
+    else:
+        print(f"[INFO] Coleta completa ativada -> coletando vídeos após {PUBLISHED_AFTER}")
 
-            batch = [
-                it for it in resp.get("items", [])
-                if it.get("id", {}).get("videoId")
-            ]
+    per_query = max(10, MAX_TOTAL // len(QUERIES) + 5)
 
-            items.extend(batch)
-            bar.update(len(batch))
+    for query in tqdm(QUERIES, desc="queries"):
+        try:
+            batch = search_one_query(
+                youtube=youtube,
+                query=query,
+                max_items=per_query,
+                published_after=published_after
+            )
+            all_items.extend(batch)
+        except HttpError as e:
+            print(f"[warn] erro na query '{query}': {e}")
+        except Exception as e:
+            print(f"[warn] erro geral na query '{query}': {e}")
 
-            next_page = resp.get("nextPageToken")
-            if not next_page:
-                break
+    dedup = {}
+    for item in all_items:
+        vid = item.get("id", {}).get("videoId")
+        if vid and vid not in dedup:
+            dedup[vid] = item
 
-            time.sleep(0.2)
+    items = list(dedup.values())
+
+    items = sorted(
+        items,
+        key=lambda x: x.get("snippet", {}).get("publishedAt", ""),
+        reverse=True
+    )
 
     return items[:MAX_TOTAL]
 
@@ -89,7 +155,12 @@ def enrich_videos(youtube, video_ids):
 
         time.sleep(0.1)
 
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+
+    if not df.empty:
+        df = df.drop_duplicates(subset=["videoId"])
+
+    return df
 
 
 def main():
@@ -101,14 +172,14 @@ def main():
         items = search_all(yt)
 
         if not items:
-            print("Nenhum vídeo encontrado.")
+            print("Nenhum vídeo novo encontrado.")
             return
 
         ids = [it["id"]["videoId"] for it in items]
         df = enrich_videos(yt, ids)
 
         df.to_csv("outputs/videos.csv", index=False, encoding="utf-8-sig")
-        print(f" Salvo {len(df)} vídeos em videos.csv")
+        print(f"Salvo {len(df)} vídeos em outputs/videos.csv")
 
     except HttpError as e:
         print(f"Erro da API do YouTube: {e}")

@@ -2,10 +2,10 @@
   "collect": true,
   "filter": true,
   "asr": true,
+  "comments": true,
+  "analytics": true,
   "nlp": true,
   "topics": true,
   "brand": true,
-  "comments": true,
-  "analytics": true,
   "mongo": true
 }

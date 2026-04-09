@@ -1,15 +1,7 @@
-# Python
-__pycache__/
-*.pyc
 .venv/
-
-# Env
-.env
-yt_api_key.txt
-
-# Data
 outputs/
 data/
-
-# Cache
 .cache/
+.env
+yt_api_key.txt
+__pycache__/

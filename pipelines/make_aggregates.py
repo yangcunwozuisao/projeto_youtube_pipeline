@@ -1,5 +1,3 @@
-# file: make_aggregates.py
-
 from pathlib import Path
 import pandas as pd
 
@@ -7,17 +5,22 @@ import pandas as pd
 def main():
 
     SRC = (
-        "outputs/dataset_nlp_plus.csv"
-        if Path("outputs/dataset_nlp_plus.csv").exists()
-        else "outputs/dataset_nlp.csv"
+        "outputs/dataset_enriched.csv"
+        if Path("outputs/dataset_enriched.csv").exists()
+        else (
+            "outputs/dataset_topics.csv"
+            if Path("outputs/dataset_topics.csv").exists()
+            else "outputs/dataset_nlp.csv"
+        )
     )
 
     df = pd.read_csv(SRC)
 
-    num_cols = ["viewCount", "sent_value"]
+    df["viewCount"] = pd.to_numeric(df.get("viewCount"), errors="coerce")
+    df["sent_value"] = pd.to_numeric(df.get("sent_value"), errors="coerce")
 
     if "topc_value" in df.columns:
-        num_cols.append("topc_value")
+        df["topc_value"] = pd.to_numeric(df.get("topc_value"), errors="coerce")
 
     agg = (
         df.groupby("channelTitle", dropna=False)
@@ -42,7 +45,7 @@ def main():
         encoding="utf-8-sig"
     )
 
-    print(f" salvo agg_channel.csv com {len(agg)} linhas")
+    print(f"salvo agg_channel.csv com {len(agg)} linhas")
 
 
 if __name__ == "__main__":

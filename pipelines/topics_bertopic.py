@@ -74,7 +74,6 @@ def main():
 
     # FALLBACK
     def kmeans_fallback(texts, embeddings, k=2):
-
         k = min(max(2, k), N)
 
         km = KMeans(
@@ -85,13 +84,31 @@ def main():
 
         labels = km.fit_predict(embeddings)
 
-        reps = []
+        tmp = pd.DataFrame({
+            "topic_id": labels,
+            "title": df["title"].fillna("").astype(str)
+            if "title" in df.columns
+            else pd.Series([""] * N)
+        })
 
-        for i in range(N):
-            title = df.loc[i, "title"] if "title" in df.columns else ""
-            reps.append(title.split()[:3])
+        cluster_repr = {}
 
-        reps = [" ".join(r) if r else "Topic" for r in reps]
+        for topic_id, group in tmp.groupby("topic_id"):
+            titles = group["title"].tolist()
+
+            tokens = []
+            for title in titles:
+                parts = [w for w in title.split() if w.strip()]
+                tokens.extend(parts[:3])
+
+            if tokens:
+                rep = " ".join(tokens[:3])
+            else:
+                rep = f"Topic {topic_id}"
+
+            cluster_repr[topic_id] = rep
+
+        reps = [cluster_repr[label] for label in labels]
 
         return labels, reps
 
@@ -137,7 +154,7 @@ def main():
         encoding="utf-8-sig"
     )
 
-    print(f" dataset_topics.csv salvo com {len(out)} linhas")
+    print(f"dataset_topics.csv salvo com {len(out)} linhas")
 
     # OVERVIEW
     try:
@@ -152,7 +169,7 @@ def main():
                 encoding="utf-8-sig"
             )
 
-            print(f" topics_overview.csv salvo ({len(topics_info)} linhas)")
+            print(f"topics_overview.csv salvo ({len(topics_info)} linhas)")
 
         else:
             raise ValueError("topic_model não disponível")
@@ -177,7 +194,8 @@ def main():
             encoding="utf-8-sig"
         )
 
-        print(" topics_overview.csv salvo (fallback)")
-        
+        print("topics_overview.csv salvo (fallback)")
+
+
 if __name__ == "__main__":
     main()

@@ -32,7 +32,7 @@ def insert_csv(file, collection, key_field="videoId"):
             upsert=True
         )
 
-        if result.matched_count == 0:
+        if result.upserted_id is not None:
             inserted += 1
         else:
             updated += 1

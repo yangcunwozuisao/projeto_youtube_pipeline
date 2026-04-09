@@ -35,7 +35,7 @@ def main():
         print("⚠️ Nenhum dado para NLP. Verifique ASR.")
         return
 
-    # PREPROCESS
+    # Processo
     df["viewCount"] = pd.to_numeric(df.get("viewCount"), errors="coerce")
     df["text"] = df["text"].fillna("")
 
@@ -66,13 +66,16 @@ def main():
     tqdm.pandas()
     df["keywords"] = df["text_short"].progress_apply(extract_keywords)
 
-    # SENTIMENT
+    # SENTIMENTO
     clf = sentiment_pipeline
 
     label_map = {
-        "LABEL_0": "NEG",
-        "LABEL_1": "NEU",
-        "LABEL_2": "POS"
+    "LABEL_0": "NEG",
+    "LABEL_1": "NEU",
+    "LABEL_2": "POS",
+    "NEG": "NEG",
+    "NEU": "NEU",
+    "POS": "POS"
     }
 
     val_map = {

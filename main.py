@@ -14,7 +14,7 @@ def check_file(path):
     else:
         print(f" {path} NÃO EXISTE")
 
-# 1 — Collect
+# 1 — Coletar videos
 if not is_done("collect"):
     print(" Step 1: Collect videos")
     from tools.run_collect import run_collect
@@ -24,7 +24,7 @@ if not is_done("collect"):
 else:
     print(" Step 1 SKIPPED")
 
-# 2 — Filter
+# 2 — Filtrar
 if not is_done("filter"):
     print("\n Step 2: Filter dataset")
     from tools.run_filter import run_filter
@@ -53,7 +53,7 @@ if not is_done("nlp"):
 else:
     print(" Step 4 SKIPPED")
 
-# 5 — Topics
+# 5 — Topicos
 if not is_done("topics"):
     print("\n Step 5: Topic modeling")
     from tools.run_topics import run_topics
@@ -63,7 +63,7 @@ if not is_done("topics"):
 else:
     print(" Step 5 SKIPPED")
 
-# 6 — Brand
+# 6 — Marcas
 if not is_done("brand"):
     print("\n Step 6: Brand extraction")
     from tools.run_brand import run_brand
@@ -73,7 +73,7 @@ if not is_done("brand"):
 else:
     print(" Step 6 SKIPPED")
 
-# 7 — Comments
+# 7 — Comentarios
 if not is_done("comments"):
     print("\n Step 7: Comment analysis")
     from tools.run_comments import run_comments
@@ -83,7 +83,7 @@ if not is_done("comments"):
 else:
     print(" Step 7 SKIPPED")
 
-# 8 — Analytics
+# 8 — Analise
 if not is_done("analytics"):
     print("\n Step 8: Analytics export")
     from tools.run_analytics import run_analytics
