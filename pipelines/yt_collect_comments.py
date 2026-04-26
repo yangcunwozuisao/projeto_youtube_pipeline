@@ -1,27 +1,36 @@
-# file: yt_collect_comments.py
+"""
+yt_collect_comments.py — Coleta comentários dos vídeos via YouTube Data API v3.
+
+Correção: API_KEY era carregada no topo do módulo, causando crash imediato
+ao fazer `from pipelines import yt_collect_comments` mesmo sem chamar main().
+Agora é carregada apenas dentro de main() e client().
+"""
+
+from __future__ import annotations
+
 import os
 import time
+from pathlib import Path
+
 import pandas as pd
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from tqdm import tqdm
 
 
-def load_api_key():
+def load_api_key() -> str:
     """
-    Tenta carregar a API key na seguinte ordem:
+    Carrega a API key na seguinte ordem:
     1) Variável de ambiente YT_API_KEY
     2) Linha YT_API_KEY=... em .env (mesma pasta)
     3) Arquivo yt_api_key.txt contendo somente a chave
     """
-    # 1) Variável de ambiente
     key = os.getenv("YT_API_KEY")
     if key:
         return key.strip()
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
 
-    # 2) Arquivo .env
     env_path = os.path.join(base_dir, ".env")
     if os.path.exists(env_path):
         with open(env_path, encoding="utf-8") as f:
@@ -30,7 +39,6 @@ def load_api_key():
                 if line.startswith("YT_API_KEY="):
                     return line.split("=", 1)[1].strip().strip('"').strip("'")
 
-    # 3) Arquivo yt_api_key.txt
     txt_path = os.path.join(base_dir, "yt_api_key.txt")
     if os.path.exists(txt_path):
         with open(txt_path, encoding="utf-8") as f:
@@ -44,23 +52,42 @@ def load_api_key():
     )
 
 
-API_KEY = load_api_key()
 MAX_PER_VIDEO = 200
 
+VIDEO_SOURCES = [
+    ("outputs/videos_top50.csv",  "top 50 por views (consistente com ASR/NLP)"),
+    ("outputs/videos_clean.csv",  "dataset limpo (step 2)"),
+    ("outputs/videos.csv",        "coleta bruta (step 1)"),
+]
 
-def client():
-    """Cria cliente da API do YouTube."""
-    return build("youtube", "v3", developerKey=API_KEY, cache_discovery=False)
+
+def _build_client(api_key: str):
+    return build("youtube", "v3", developerKey=api_key, cache_discovery=False)
 
 
-def fetch_comments(yt, vid, limit=200):
-    """
-    Busca até `limit` comentários (threads) de um vídeo.
-    Retorna a lista de commentThreads brutos da API.
-    """
-    out = []
+def load_video_ids() -> list[str]:
+    for path, label in VIDEO_SOURCES:
+        if Path(path).exists():
+            print(f"[info] lendo vídeos de: {path} ({label})")
+            return (
+                pd.read_csv(path)["videoId"]
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
+            )
+
+    raise FileNotFoundError(
+        "Nenhum arquivo de vídeos encontrado. Execute collect e filter primeiro.\n"
+        "Esperados (em ordem de preferência):\n"
+        + "\n".join(f"  • {p}" for p, _ in VIDEO_SOURCES)
+    )
+
+
+def fetch_comments(yt, vid: str, limit: int = 200) -> list:
+    out   = []
     token = None
-    got = 0
+    got   = 0
 
     while got < limit:
         resp = (
@@ -89,77 +116,100 @@ def fetch_comments(yt, vid, limit=200):
     return out
 
 
-def flatten(video_id, thread):
-    """
-    Achata um commentThread em linhas (top-level + replies).
-    Retorna lista de dicionários.
-    """
+def flatten(video_id: str, thread: dict) -> list[dict]:
     rows = []
 
     top = thread.get("snippet", {}).get("topLevelComment", {})
-    ts = top.get("snippet", {})
+    ts  = top.get("snippet", {})
 
     if ts:
-        rows.append(
-            {
-                "videoId": video_id,
-                "commentId": top.get("id"),
-                "author": ts.get("authorDisplayName"),
-                "text": ts.get("textDisplay"),  # se quiser texto “puro”, use textOriginal
-                "likeCount": ts.get("likeCount"),
-                "publishedAt": ts.get("publishedAt"),
-                "isReply": False,
-                "replyTo": None,
-            }
-        )
+        rows.append({
+            "videoId":     video_id,
+            "commentId":   top.get("id"),
+            "author":      ts.get("authorDisplayName"),
+            "text":        ts.get("textDisplay"),
+            "likeCount":   ts.get("likeCount"),
+            "publishedAt": ts.get("publishedAt"),
+            "isReply":     False,
+            "replyTo":     None,
+        })
 
-    replies_container = (thread.get("replies") or {})
+    replies_container = thread.get("replies") or {}
     for r in replies_container.get("comments", []) or []:
         rs = r.get("snippet", {})
-        rows.append(
-            {
-                "videoId": video_id,
-                "commentId": r.get("id"),
-                "author": rs.get("authorDisplayName"),
-                "text": rs.get("textDisplay"),
-                "likeCount": rs.get("likeCount"),
-                "publishedAt": rs.get("publishedAt"),
-                "isReply": True,
-                "replyTo": top.get("id") if top else None,
-            }
-        )
+        rows.append({
+            "videoId":     video_id,
+            "commentId":   r.get("id"),
+            "author":      rs.get("authorDisplayName"),
+            "text":        rs.get("textDisplay"),
+            "likeCount":   rs.get("likeCount"),
+            "publishedAt": rs.get("publishedAt"),
+            "isReply":     True,
+            "replyTo":     top.get("id") if top else None,
+        })
 
     return rows
 
 
-def main():
-    yt = client()
+def load_existing_comments() -> set[str]:
+    path = Path("outputs/comments.csv")
+    if not path.exists():
+        return set()
+    try:
+        existing = pd.read_csv(path)
+        return set(existing["videoId"].dropna().astype(str).unique().tolist())
+    except Exception as e:
+        print(f"[warn] não consegui ler comments.csv existente: {e}")
+        return set()
 
-    # Lê lista de vídeos do arquivo videos.csv (coluna: videoId)
-    vids = (
-        pd.read_csv("outputs/videos.csv")["videoId"]
-        .dropna()
-        .astype(str)
-        .unique()
-        .tolist()
-    )
 
-    all_rows = []
+def main() -> None:
+    # Carrega a API key apenas ao executar, não no import
+    api_key = load_api_key()
+    yt      = _build_client(api_key)
 
-    for vid in tqdm(vids, desc="Coletando comentários"):
+    vids = load_video_ids()
+
+    already_collected = load_existing_comments()
+    pending = [v for v in vids if v not in already_collected]
+
+    print(f"[info] total de vídeos na fonte:       {len(vids)}")
+    print(f"[info] já coletados anteriormente:     {len(already_collected)}")
+    print(f"[info] pendentes nesta execução:       {len(pending)}")
+
+    if not pending:
+        print("[info] Nenhum vídeo novo para coletar comentários.")
+        return
+
+    all_rows: list[dict] = []
+
+    for vid in tqdm(pending, desc="Coletando comentários"):
         try:
             threads = fetch_comments(yt, vid, MAX_PER_VIDEO)
             for t in threads:
                 all_rows.extend(flatten(vid, t))
         except HttpError as e:
             print(f"[warn] {vid} sem comentários ou restrito: {e}")
+        except Exception as e:
+            print(f"[warn] {vid} erro inesperado: {e}")
 
-    if all_rows:
-        df = pd.DataFrame(all_rows)
-        df.to_csv("outputs/comments.csv", index=False, encoding="utf-8-sig")
-        print(f" Salvo comments.csv com {len(all_rows)} linhas")
-    else:
-        print("⚠ Nenhum comentário coletado.")
+    if not all_rows:
+        print("Nenhum comentário novo coletado.")
+        return
+
+    new_df = pd.DataFrame(all_rows)
+
+    out_path = Path("outputs/comments.csv")
+    if out_path.exists() and already_collected:
+        try:
+            old_df = pd.read_csv(out_path)
+            new_df = pd.concat([old_df, new_df], ignore_index=True)
+            new_df = new_df.drop_duplicates(subset=["commentId"], keep="last")
+        except Exception as e:
+            print(f"[warn] não consegui mesclar com comments.csv existente: {e}")
+
+    new_df.to_csv(out_path, index=False, encoding="utf-8-sig")
+    print(f"Salvo comments.csv com {len(new_df)} linhas no total")
 
 
 if __name__ == "__main__":

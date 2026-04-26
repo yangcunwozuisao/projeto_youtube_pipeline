@@ -63,23 +63,28 @@ if not is_done("topics"):
 else:
     print(" Step 5 SKIPPED")
 
-# 6 — Marcas
+# 6 — Comentarios
+if not is_done("comments"):
+    print("\n Step 6: Comment analysis")
+    from tools.run_comments import run_comments
+    run_comments()
+    check_file("outputs/comments.csv")
+    check_file("outputs/dataset_enriched.csv")
+
+    if not Path("outputs/dataset_enriched.csv").exists():
+        raise FileNotFoundError("dataset_enriched.csv não foi gerado.")
+
+    mark_done("comments")
+else:
+    print(" Step 6 SKIPPED")
+
+# 7 — Marcas
 if not is_done("brand"):
-    print("\n Step 6: Brand extraction")
+    print("\n Step 7: Brand extraction")
     from tools.run_brand import run_brand
     run_brand()
     check_file("outputs/dataset_brands.csv")
     mark_done("brand")
-else:
-    print(" Step 6 SKIPPED")
-
-# 7 — Comentarios
-if not is_done("comments"):
-    print("\n Step 7: Comment analysis")
-    from tools.run_comments import run_comments
-    run_comments()
-    check_file("outputs/comments.csv")
-    mark_done("comments")
 else:
     print(" Step 7 SKIPPED")
 
@@ -88,23 +93,41 @@ if not is_done("analytics"):
     print("\n Step 8: Analytics export")
     from tools.run_analytics import run_analytics
     run_analytics()
+    check_file("outputs/bi_fato_videos.csv")
     mark_done("analytics")
 else:
     print(" Step 8 SKIPPED")
+
+# 9 — Detecção de spam / bots
+if not is_done("spam"):
+    print("\n Step 9: Spam / bot detection")
+    from tools.run_spam import run_spam
+    # use_embeddings=True: mais preciso, porém mais lento
+    # use_embeddings=False: apenas regras, muito rápido
+    run_spam(use_embeddings=True)
+    check_file("outputs/comments_spam.csv")
+    mark_done("spam")
+else:
+    print(" Step 9 SKIPPED")
 
 print("\n Pipeline finished successfully!\n")
 
 # MongoDB
 if not is_done("mongo"):
     print("\n MongoDB:\n")
-    insert_csv("outputs/videos_clean.csv", "videos", key_field="videoId")
-    insert_csv("outputs/transcripts.csv", "transcripts", key_field="videoId")
-    insert_csv("outputs/dataset_nlp.csv", "nlp", key_field="videoId")
-    insert_csv("outputs/dataset_topics.csv", "topics", key_field="videoId")
-    insert_csv("outputs/dataset_brands.csv", "brands", key_field="videoId")
+    insert_csv("outputs/videos_clean.csv",   "videos",      key_field="videoId")
+    insert_csv("outputs/transcripts.csv",    "transcripts", key_field="videoId")
+    insert_csv("outputs/dataset_nlp.csv",    "nlp",         key_field="videoId")
+    insert_csv("outputs/dataset_topics.csv", "topics",      key_field="videoId")
+    insert_csv("outputs/dataset_brands.csv", "brands",      key_field="videoId")
 
-    # comments usa commentId
-    insert_csv("outputs/comments.csv", "comments", key_field="commentId")
+    # comments: usa a versão com spam label (se existir), senão a original
+    comments_src = (
+        "outputs/comments_spam.csv"
+        if Path("outputs/comments_spam.csv").exists()
+        else "outputs/comments.csv"
+    )
+    insert_csv(comments_src, "comments", key_field="commentId")
 
     mark_done("mongo")
 else:
@@ -118,8 +141,8 @@ print("\n MongoDB collections:\n")
 cols = db.list_collection_names()
 
 if not cols:
-    print(" MongoDB :Nenhuma coleção encontrada")
+    print(" MongoDB: Nenhuma coleção encontrada")
 else:
     for col in cols:
         count = db[col].count_documents({})
-        print(f"{col} → {count}")
+        print(f"  {col} → {count}")

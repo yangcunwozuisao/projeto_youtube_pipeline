@@ -1,12 +1,33 @@
+"""
+db.py — Conexão singleton com o MongoDB.
+
+MONGO_URI pode ser configurada via variável de ambiente, evitando
+hard-code de "localhost" em ambientes de produção/Docker.
+"""
+
+from __future__ import annotations
+
+import os
+
 from pymongo import MongoClient
+from pymongo.database import Database
 
-_client = None
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+MONGO_DB  = os.getenv("MONGO_DB",  "youtube_db")
 
-def get_db():
+_client: MongoClient | None = None
+
+
+def get_db() -> Database:
     global _client
-
     if _client is None:
-        print("🔌 Conectando MongoDB (uma única vez)...")
-        _client = MongoClient("mongodb://localhost:27017/")
+        print(f"[db] Conectando MongoDB ({MONGO_URI})...")
+        _client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    return _client[MONGO_DB]
 
-    return _client["youtube_db"]
+
+def close_db() -> None:
+    global _client
+    if _client is not None:
+        _client.close()
+        _client = None
