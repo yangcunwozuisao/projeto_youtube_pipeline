@@ -312,15 +312,3 @@ Os agentes em `agents/` encapsulam cada etapa do pipeline para uso em modo multi
 > **Atenção:** a orquestração multi-agente (entrada `UserProxyAgent` + `GroupChat`) ainda não está implementada. Para execução completa, use `main.py` diretamente.
 
 ---
-
-## Bugs Conhecidos
-
-| Severidade | Arquivo | Problema |
-|---|---|---|
-| 🔴 Crítico | `asr_whisper.py:186` | `whisper.transcribe(model, path)` deve ser `model.transcribe(path)` |
-| 🔴 Crítico | `brand_entity_extract.py:4` | `from shared_models import ner_model` carrega o modelo na importação, quebrando o lazy loading |
-| 🔴 Crítico | `yt_collect_videos.py:15` | `API_KEY` lida no topo do módulo; deve ser carregada dentro de `main()` |
-| 🔴 Crítico | `agents/` | Falta `spam_agent.py` e entrada de orquestração (UserProxyAgent + GroupChat) |
-| 🟡 Aviso | `*_agent.py` | `register_function` deprecated no AutoGen ≥ 0.2; funções sem type annotations |
-| 🟡 Aviso | `make_aggregates.py` + `exports_bi.py` | Agregação por canal duplicada em dois arquivos |
-| 🟡 Aviso | `config.py` | Ollama/qwen2 pode não suportar function calling do AutoGen |
