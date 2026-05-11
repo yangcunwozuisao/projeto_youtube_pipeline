@@ -37,9 +37,6 @@ LABEL_MAP = {
 }
 VAL_MAP = {"NEG": -1, "NEU": 0, "POS": 1}
 
-
-# ── Main ──────────────────────────────────────────────────────────────────────
-
 def main() -> None:
 
     # Fonte de vídeos: primeira disponível na lista de prioridade
@@ -82,7 +79,7 @@ def main() -> None:
     print(f"[info] linhas com transcrição: {len(df)}")
     print("[info] idiomas:", df["language"].value_counts().to_dict())
 
-    # ── Keywords ──────────────────────────────────────────────────────────────
+    # Keywords 
     kw_model = KeyBERT(model=get_embedding_model())
 
     def extract_keywords(txt: str) -> str:
@@ -99,7 +96,7 @@ def main() -> None:
     tqdm.pandas()
     df["keywords"] = df["text_short"].progress_apply(extract_keywords)
 
-    # ── Sentimento ────────────────────────────────────────────────────────────
+    # Sentimento
     clf = get_sentiment_pipeline()
     _label_logged = False
 
@@ -126,7 +123,7 @@ def main() -> None:
     df["sent_conf"]  = sents.apply(lambda d: d["score"])
     df["sent_value"] = sents.apply(lambda d: d["sent_value"])
 
-    # ── Output ────────────────────────────────────────────────────────────────
+    # Output 
     df_out = df.sort_values("viewCount", ascending=False)
     df_out.to_csv("outputs/dataset_nlp.csv", index=False, encoding="utf-8-sig")
 

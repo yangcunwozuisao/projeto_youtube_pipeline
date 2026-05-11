@@ -65,7 +65,7 @@ def pick_top_comment(df_comments: pd.DataFrame) -> pd.DataFrame:
     else:
         df["isReply"] = False
 
-    # 只保留有文本的评论
+    # somente comentario como string
     df = df[df["text"].str.strip() != ""].copy()
 
     if df.empty:

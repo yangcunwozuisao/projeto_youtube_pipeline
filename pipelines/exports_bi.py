@@ -16,7 +16,7 @@ import pandas as pd
 
 def main() -> None:
 
-    # ── Fonte base ────────────────────────────────────────────────────────────
+    # Fonte base
     for candidate in [
         "outputs/dataset_enriched.csv",
         "outputs/dataset_topics.csv",
@@ -38,7 +38,7 @@ def main() -> None:
     if "topc_value" in df.columns:
         df["topc_value"] = pd.to_numeric(df.get("topc_value"), errors="coerce")
 
-    # ── Merge com marcas (se disponível) ─────────────────────────────────────
+    # Merge com marcas (se disponível) 
     brands_path = Path("outputs/dataset_brands.csv")
     if brands_path.exists():
         brands = pd.read_csv(brands_path)
@@ -56,7 +56,7 @@ def main() -> None:
                 how="left",
             )
 
-    # ── Agregado por canal ────────────────────────────────────────────────────
+    # Agregado por canal
     agg_channel_dict: dict = {
         "videos":      ("videoId",    "nunique"),
         "views_total": ("viewCount",  "sum"),
@@ -73,7 +73,7 @@ def main() -> None:
     )
     agg_channel.to_csv("outputs/bi_agg_channel.csv", index=False, encoding="utf-8-sig")
 
-    # ── Agregado por marca ────────────────────────────────────────────────────
+    # Agregado por marca
     if "brand_primary" in df.columns:
         agg_brand_dict: dict = {
             "videos":      ("videoId",    "nunique"),
@@ -91,7 +91,7 @@ def main() -> None:
         )
         agg_brand.to_csv("outputs/bi_agg_brand.csv", index=False, encoding="utf-8-sig")
 
-    # ── Tabela fato para BI ───────────────────────────────────────────────────
+    # Tabela fato para BI
     cols_keep = [
         c for c in [
             "videoId", "title", "channelTitle", "publishedAt",
