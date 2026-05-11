@@ -1,394 +1,326 @@
-Pipeline automatizado para mineração multimodal de vídeos de unboxing no YouTube
+# YouTube Analytics Pipeline
 
-Projeto em Python para coleta, transcrição, processamento e análise de vídeos de unboxing/review no YouTube, com foco em inteligência de mercado aplicada ao varejo de importação.
+Sistema de coleta, transcrição e análise de vídeos do YouTube com NLP, modelagem de tópicos, detecção de spam e exportação para BI. Orquestrado via agentes AutoGen.
 
-O pipeline integra coleta de vídeos e comentários, transcrição automática de fala, extração de palavras-chave, análise de sentimentos, modelagem de tópicos, extração de marcas, persistência em MongoDB, visualização em dashboard e uma camada experimental multiagente.
+---
 
-Objetivo
+## Índice
 
-Automatizar a mineração de dados de vídeos de unboxing e reviews no YouTube para gerar indicadores relevantes de:
+- [Visão Geral](#visão-geral)
+- [Arquitetura](#arquitetura)
+- [Pré-requisitos](#pré-requisitos)
+- [Instalação](#instalação)
+- [Configuração](#configuração)
+- [Uso](#uso)
+- [Estrutura do Projeto](#estrutura-do-projeto)
+- [Etapas do Pipeline](#etapas-do-pipeline)
+- [Saídas Geradas](#saídas-geradas)
+- [Agentes AutoGen](#agentes-autogen)
+- [Bugs Conhecidos](#bugs-conhecidos)
 
-sentimento
-tópicos recorrentes
-marcas, séries e modelos
-engajamento
-comentários do público
-spam e comportamento suspeito em comentários
+---
 
-A proposta busca transformar dados públicos e não estruturados em informações úteis para análise de mercado.
+## Visão Geral
 
-Principais funcionalidades
-Coleta de vídeos com YouTube Data API
-Coleta incremental para evitar retrabalho e reduzir consumo de quota
-Enriquecimento de canais com métricas adicionais
-Filtragem e seleção de vídeos mais relevantes
-Extração de áudio com yt-dlp e FFmpeg
-Transcrição automática com Whisper
-Extração de palavras-chave com KeyBERT
-Análise de sentimentos com XLM-RoBERTa
-Modelagem de tópicos com BERTopic
-Extração híbrida de marcas, séries e modelos com regras + GLiNER
-Coleta e análise de comentários
-Detecção de spam e bots em comentários
-Persistência em MongoDB com upsert
-Dashboard analítico em Streamlit
-Camada experimental multiagente com AutoGen
-Arquitetura geral
+O pipeline realiza 9 etapas sequenciais:
 
-O pipeline foi organizado em etapas modulares:
+```
+Coleta → Filtro → ASR → NLP → Tópicos → Comentários → Marcas → Analytics → Spam
+```
 
-Coleta de vídeos
-Limpeza e filtragem
-Extração de áudio
-Transcrição automática
-Processamento NLP
-Modelagem de tópicos
-Extração de marcas
-Coleta e análise de comentários
-Detecção de spam/bots
-Persistência em MongoDB
-Exportações para BI
-Dashboard em Streamlit
-Camada experimental multiagente
-Tecnologias utilizadas
-Linguagem e ambiente
-Python 3.11
-Coleta e mídia
-YouTube Data API v3
-google-api-python-client
-yt-dlp
-FFmpeg
-NLP / ML
-Whisper
-KeyBERT
-sentence-transformers
-XLM-RoBERTa
-BERTopic
-GLiNER
-scikit-learn
-pandas
-numpy
-Persistência e visualização
-MongoDB
-pymongo
-Streamlit
-Plotly
-Automação experimental
-AutoGen
-Estrutura esperada do projeto
-projeto_youtube_pipeline/
-│
-├── data/
-│   └── audio/
-│
-├── outputs/
-│   ├── videos.csv
-│   ├── videos_clean.csv
-│   ├── videos_top50.csv
-│   ├── transcripts.csv
-│   ├── dataset_nlp.csv
-│   ├── dataset_topics.csv
-│   ├── topics_overview.csv
-│   ├── dataset_brands.csv
-│   ├── comments.csv
-│   ├── dataset_enriched.csv
-│   ├── comments_spam.csv
-│   ├── bi_fato_videos.csv
-│   ├── bi_agg_channel.csv
-│   └── bi_agg_brand.csv
-│
-├── tools/
+Cada etapa é idempotente: se já foi executada com sucesso, é pulada automaticamente via `pipeline_state.json`. Os resultados são persistidos em CSV e sincronizados com um banco MongoDB.
+
+---
+
+## Arquitetura
+
+```
+main.py                          # Orquestrador principal (execução sequencial)
+├── tools/                       # Wrappers de cada etapa
 │   ├── run_collect.py
 │   ├── run_filter.py
 │   ├── run_asr.py
 │   ├── run_nlp.py
 │   ├── run_topics.py
-│   ├── run_brand.py
 │   ├── run_comments.py
+│   ├── run_brand.py
 │   ├── run_analytics.py
-│   └── utils_incremental.py
-│
-├── agents/
+│   └── run_spam.py
+├── pipelines/                   # Implementação de cada etapa
+│   ├── yt_collect_videos.py
+│   ├── step_eda.py / step_filter.py
+│   ├── asr_whisper.py
+│   ├── nlp_stage.py
+│   ├── topics_bertopic.py
+│   ├── yt_collect_comments.py / comments_sentiment.py
+│   ├── brand_entity_extract.py
+│   ├── make_aggregates.py / exports_bi.py
+│   └── spam_detect.py
+├── agents/                      # Agentes AutoGen (orquestração multi-agente)
+│   ├── manager_agent.py
 │   ├── collector_agent.py
 │   ├── filter_agent.py
 │   ├── asr_agent.py
 │   ├── nlp_agent.py
 │   ├── topic_agent.py
-│   ├── brand_agent.py
 │   ├── comment_agent.py
-│   ├── analytics_agent.py
-│   └── manager_agent.py
-│
-├── dashboard.py
-├── main.py
-├── db.py
-├── mongo_writer.py
-├── state_manager.py
-├── spam_detect.py
-└── README.md
-Pré-requisitos
+│   ├── brand_agent.py
+│   └── analytics_agent.py
+├── shared_models.py             # Carregamento lazy dos modelos ML
+├── state_manager.py             # Controle de estado do pipeline
+├── db.py                        # Conexão singleton com MongoDB
+├── mongo_writer.py              # Escrita bulk no MongoDB
+├── config.py                    # Configuração do LLM (AutoGen)
+└── outputs/                     # CSVs gerados pelo pipeline
+```
 
-Antes de executar o projeto, é necessário ter instalado:
+---
 
-Python 3.11
-FFmpeg
-MongoDB local ou remoto
-Git
-ambiente virtual configurado
+## Pré-requisitos
 
-Também é necessário possuir uma chave da YouTube Data API.
+- Python 3.9+
+- MongoDB rodando localmente (ou via `MONGO_URI`)
+- ffmpeg (ou `imageio-ffmpeg`)
+- Chave de API do YouTube Data API v3
+- Ollama com modelo `qwen2` (para os agentes AutoGen)
 
-Instalação
-1. Clonar o projeto
-git clone <url-do-repositorio>
-cd projeto_youtube_pipeline
-2. Criar e ativar ambiente virtual
-Windows
+---
+
+## Instalação
+
+```bash
+# Clonar o repositório
+git clone <repo-url>
+cd youtube-pipeline
+
+# Criar ambiente virtual
 python -m venv .venv
-.venv\Scripts\activate
-Linux / Mac
-python3 -m venv .venv
-source .venv/bin/activate
-3. Instalar dependências
+source .venv/bin/activate        # Linux/macOS
+.venv\Scripts\activate           # Windows
+
+# Instalar dependências
 pip install -r requirements.txt
-4. Configurar variáveis de ambiente
+```
 
-Crie um arquivo .env com os dados necessários:
+Dependências principais:
 
-YT_API_KEY=YOUR_YOUTUBE_API_KEY
-MONGO_URI=mongodb://localhost:27017/
-ASR_TOP_N=20
+```
+google-api-python-client
+yt-dlp
+openai-whisper
+imageio-ffmpeg
+pandas
+pymongo
+sentence-transformers
+transformers
+keybert
+bertopic
+umap-learn
+hdbscan
+gliner
+pyautogen
+filelock
+tqdm
+```
 
-Se houver uso de modelos ou serviços adicionais, inclua as demais variáveis necessárias no seu ambiente.
+---
 
-Como executar
-Execução completa do pipeline
+## Configuração
+
+### Chave da API do YouTube
+
+A chave é lida na seguinte ordem de prioridade:
+
+1. Variável de ambiente: `export YT_API_KEY="sua_chave"`
+2. Arquivo `.env` na raiz: `YT_API_KEY=sua_chave`
+3. Arquivo `yt_api_key.txt` contendo apenas a chave
+
+### MongoDB
+
+Por padrão conecta em `mongodb://localhost:27017/youtube_db`. Para sobrescrever:
+
+```bash
+export MONGO_URI="mongodb://usuario:senha@host:27017/"
+export MONGO_DB="nome_do_banco"
+```
+
+### Número de vídeos para ASR
+
+Controla quantos vídeos são transcritos (padrão: 20):
+
+```bash
+export ASR_TOP_N=50
+```
+
+### LLM para os agentes (AutoGen)
+
+Edite `config.py` com o modelo e endpoint desejados:
+
+```python
+config_list = [
+    {
+        "model": "qwen2",
+        "base_url": "http://localhost:11434/v1",
+        "api_key": "ollama"
+    }
+]
+```
+
+---
+
+## Uso
+
+### Execução completa do pipeline
+
+```bash
 python main.py
+```
 
-O main.py orquestra as etapas principais do projeto.
+### Resetar e re-executar uma etapa específica
 
-Execução modular
+```python
+from state_manager import reset
+reset("nlp")          # Re-executa apenas a etapa NLP
+reset()               # Re-executa todo o pipeline
+```
 
-Se quiser rodar etapas separadamente, use os wrappers run_*:
+### Executar uma etapa isoladamente
 
-python -m tools.run_collect
-python -m tools.run_filter
-python -m tools.run_asr
-python -m tools.run_nlp
-python -m tools.run_topics
-python -m tools.run_brand
-python -m tools.run_comments
-python -m tools.run_analytics
-Lógica do pipeline
-1. Coleta de vídeos
+```bash
+python -m pipelines.asr_whisper
+python -m pipelines.nlp_stage
+python -m pipelines.spam_detect --no-embeddings   # Spam apenas com regras (mais rápido)
+```
 
-A coleta utiliza a YouTube Data API para buscar vídeos por múltiplas consultas relacionadas a smartphones, unboxing, reviews e comparativos.
+### Verificar transcrições
 
-Também pode enriquecer os resultados com dados dos canais, como:
+```bash
+python check_transcripts.py
+```
 
-subscriberCount
-channelVideoCount
-channelViewCount
-country
-2. Coleta incremental
+### Testar conexão com MongoDB
 
-O sistema consulta o MongoDB para identificar a data do vídeo mais recente já armazenado e tenta coletar apenas novos registros, reduzindo repetição e economizando quota.
+```bash
+python test_mongo.py
+python test_query.py
+```
 
-3. Filtragem
+---
 
-Após a coleta:
+## Estrutura do Projeto
 
-remove duplicados
-converte duração para segundos
-remove vídeos muito curtos
-seleciona os vídeos mais relevantes por visualizações
+```
+.
+├── main.py
+├── config.py
+├── db.py
+├── shared_models.py
+├── state_manager.py
+├── mongo_writer.py
+├── utils_incremental.py
+├── pipeline_state.json          # Criado automaticamente
+├── yt_api_key.txt               # Opcional (ver Configuração)
+├── .env                         # Opcional (ver Configuração)
+├── outputs/                     # CSVs gerados
+│   ├── videos.csv
+│   ├── videos_clean.csv
+│   ├── videos_filtered.csv
+│   ├── videos_top50.csv
+│   ├── transcripts.csv
+│   ├── dataset_nlp.csv
+│   ├── dataset_topics.csv
+│   ├── topics_overview.csv
+│   ├── comments.csv
+│   ├── dataset_enriched.csv
+│   ├── dataset_brands.csv
+│   ├── comments_spam.csv
+│   ├── agg_channel.csv
+│   ├── bi_fato_videos.csv
+│   ├── bi_agg_channel.csv
+│   └── bi_agg_brand.csv
+├── data/
+│   └── audio/                   # Áudios baixados pelo ASR
+├── tools/
+├── pipelines/
+└── agents/
+```
 
-A base filtrada é salva em videos_clean.csv, e a amostra principal segue para videos_top50.csv.
+---
 
-4. Extração de áudio
+## Etapas do Pipeline
 
-Os áudios são baixados com yt-dlp e tratados com FFmpeg.
+### Step 1 — Coleta de vídeos (`yt_collect_videos.py`)
 
-5. Transcrição
+Busca vídeos via YouTube Data API v3 para os mercados BR, US e GLOBAL usando queries de review/unboxing de smartphones. Suporta coleta incremental (retoma a partir do último vídeo no banco). Salva em `outputs/videos.csv`.
 
-A transcrição automática é feita com Whisper.
+### Step 2 — Filtro e EDA (`step_eda.py` + `step_filter.py`)
 
-Saída:
+Converte duração ISO 8601 para segundos, remove vídeos com menos de 30 segundos. Gera `videos_clean.csv`, `videos_filtered.csv` e `videos_top50.csv` (top 50 por visualizações).
 
-outputs/transcripts.csv
+### Step 3 — Transcrição ASR (`asr_whisper.py`)
 
-Campos principais:
+Baixa o áudio via `yt-dlp` e transcreve com OpenAI Whisper (modelo `base`). Reutiliza áudios já baixados e pula vídeos já transcritos. Processa os `ASR_TOP_N` vídeos mais vistos. Salva em `outputs/transcripts.csv`.
 
-videoId
-language
-text
-6. NLP
+### Step 4 — NLP (`nlp_stage.py`)
 
-O pipeline combina metadados e transcrições para:
+Para cada transcrição: extrai keywords com KeyBERT e calcula sentimento com `cardiffnlp/twitter-xlm-roberta-base-sentiment`. Salva em `outputs/dataset_nlp.csv`.
 
-extrair palavras-chave com KeyBERT
-classificar sentimento com XLM-RoBERTa
+### Step 5 — Modelagem de tópicos (`topics_bertopic.py`)
 
-Saída:
+Gera embeddings com SentenceTransformer e clusteriza com BERTopic (UMAP + HDBSCAN). Fallback para KMeans em datasets pequenos. Salva em `outputs/dataset_topics.csv` e `outputs/topics_overview.csv`.
 
-outputs/dataset_nlp.csv
+### Step 6 — Comentários (`yt_collect_comments.py` + `comments_sentiment.py`)
 
-Campos principais:
+Coleta até 200 comentários por vídeo via API, seleciona o top comment por likes e calcula sentimento. Enriquece o dataset base gerando `outputs/dataset_enriched.csv`.
 
-sent_label
-sent_conf
-sent_value
-keywords
-7. Modelagem de tópicos
+### Step 7 — Extração de marcas (`brand_entity_extract.py`)
 
-A modelagem de tópicos é feita com BERTopic.
+Combina regras de regex com NER (GLiNER `gliner_multi-v2.1`) para identificar marca, série e modelo do smartphone. Salva em `outputs/dataset_brands.csv`.
 
-Quando necessário, o pipeline pode usar fallback com KMeans para bases pequenas.
+### Step 8 — Analytics e BI (`make_aggregates.py` + `exports_bi.py`)
 
-Saídas:
+Gera agregações por canal e marca, e a tabela fato principal para dashboards. Salva em `outputs/bi_fato_videos.csv`, `bi_agg_channel.csv` e `bi_agg_brand.csv`.
 
-outputs/dataset_topics.csv
-outputs/topics_overview.csv
-8. Extração de marcas
+### Step 9 — Detecção de spam (`spam_detect.py`)
 
-A identificação de marcas, séries e modelos usa uma abordagem híbrida:
+Estratégia híbrida: sinais de regra (URLs, keywords promocionais, duplicatas exatas, ratio de maiúsculas, densidade de emoji) combinados com similaridade de embeddings para detectar quase-duplicatas. Classifica comentários como `legítimo`, `suspeito` ou `spam`. Salva em `outputs/comments_spam.csv`.
 
-regras textuais e regex
-GLiNER / NER
+---
 
-Saída:
+## Saídas Geradas
 
-outputs/dataset_brands.csv
+| Arquivo | Conteúdo |
+|---|---|
+| `videos.csv` | Metadados brutos dos vídeos |
+| `videos_top50.csv` | Top 50 vídeos por visualizações |
+| `transcripts.csv` | Transcrições ASR (videoId, language, text) |
+| `dataset_nlp.csv` | Vídeos + keywords + sentimento |
+| `dataset_topics.csv` | Vídeos + topic_id + topic_repr |
+| `dataset_enriched.csv` | Dataset completo + top comment + sentimento do comentário |
+| `dataset_brands.csv` | Dataset completo + brand_primary + brand_series + model_hint |
+| `comments_spam.csv` | Comentários + spam_score + spam_label + spam_signals |
+| `bi_fato_videos.csv` | Tabela fato consolidada para BI |
+| `bi_agg_channel.csv` | Agregações por canal |
+| `bi_agg_brand.csv` | Agregações por marca |
 
-Campos esperados:
+---
 
-brand_primary
-brand_series
-model_hint
-brand_source
-brand_conf
-9. Comentários
+## Agentes AutoGen
 
-O pipeline coleta comentários dos vídeos selecionados e pode enriquecer a base com:
+Os agentes em `agents/` encapsulam cada etapa do pipeline para uso em modo multi-agente. Cada agente é um `AssistantAgent` com a função da sua etapa registrada.
 
-top_comment
-topc_likes
-topc_label
-topc_conf
-topc_value
+> **Atenção:** a orquestração multi-agente (entrada `UserProxyAgent` + `GroupChat`) ainda não está implementada. Para execução completa, use `main.py` diretamente.
 
-Saídas:
+---
 
-outputs/comments.csv
-outputs/dataset_enriched.csv
-10. Spam e bots
-
-O módulo spam_detect.py faz uma análise híbrida para detectar comentários suspeitos.
-
-Ele combina:
-
-sinais heurísticos
-similaridade textual por embeddings
-
-Saída:
-
-outputs/comments_spam.csv
-
-Campos principais:
-
-spam_score
-spam_label
-spam_signals
-
-Classificações:
-
-legítimo
-suspeito
-spam
-11. Persistência em MongoDB
-
-Os dados são gravados em coleções específicas, como:
-
-videos
-transcripts
-nlp
-topics
-brands
-comments
-
-A escrita usa upsert, evitando duplicações e permitindo atualização de registros existentes.
-
-12. Dashboard
-
-O dashboard.py permite visualizar os resultados em Streamlit.
-
-Principais recursos:
-
-filtros por marca, canal e sentimento
-métricas gerais
-correlação entre métricas
-análise de marcas e sentimentos
-ranking de canais
-análise de spam/bots
-
-Executar:
-
-streamlit run dashboard.py
-13. Multiagente
-
-Existe uma camada experimental baseada em AutoGen, composta por agentes especializados, como:
-
-CollectorAgent
-FilterAgent
-ASRAgent
-NLPAgent
-TopicAgent
-BrandAgent
-CommentAgent
-AnalyticsAgent
-ManagerAgent
-
-Essa camada é experimental e funciona como apoio à orquestração futura do pipeline.
-
-Arquivos de saída mais importantes
-Arquivo	Descrição
-videos.csv	base bruta coletada
-videos_clean.csv	base limpa
-videos_top50.csv	amostra principal para etapas analíticas
-transcripts.csv	transcrições
-dataset_nlp.csv	NLP e sentimentos
-dataset_topics.csv	tópicos
-dataset_brands.csv	marcas, séries e modelos
-comments.csv	comentários coletados
-dataset_enriched.csv	base com enriquecimento de comentários
-comments_spam.csv	comentários classificados por suspeição
-bi_fato_videos.csv	exportação principal para BI
-bi_agg_channel.csv	agregação por canal
-bi_agg_brand.csv	agregação por marca
-Controle de estado
-
-O projeto utiliza pipeline_state.json para registrar etapas concluídas e evitar reprocessamento desnecessário.
-
-Exemplo de uso:
-
-se a etapa de coleta já foi concluída, ela pode ser pulada em execuções futuras
-se quiser rerodar uma etapa, pode ser necessário limpar o estado correspondente
-Principais limitações atuais
-Dependência da quota da YouTube Data API
-Custo computacional da transcrição com Whisper
-Tendência de textos técnicos serem classificados como neutros
-Possíveis erros em reconhecimento de marcas
-Qualidade do dashboard depende da qualidade dos dados anteriores
-A camada multiagente ainda é experimental
-Possíveis melhorias futuras
-Aumentar a base de vídeos e comentários
-Validar manualmente sentimentos e entidades
-Melhorar a detecção de marcas em casos ambíguos
-Refinar o módulo de spam/bots
-Incluir análise visual por frames
-Melhorar o dashboard
-Tornar a camada multiagente mais autônoma
-Expandir o pipeline para outras categorias além de smartphones
-Exemplo de uso acadêmico
-
-Este projeto foi desenvolvido como parte de um Trabalho de Conclusão de Curso voltado à aplicação de técnicas de mineração multimodal, NLP e inteligência de mercado em vídeos do YouTube.
+## Bugs Conhecidos
+
+| Severidade | Arquivo | Problema |
+|---|---|---|
+| 🔴 Crítico | `asr_whisper.py:186` | `whisper.transcribe(model, path)` deve ser `model.transcribe(path)` |
+| 🔴 Crítico | `brand_entity_extract.py:4` | `from shared_models import ner_model` carrega o modelo na importação, quebrando o lazy loading |
+| 🔴 Crítico | `yt_collect_videos.py:15` | `API_KEY` lida no topo do módulo; deve ser carregada dentro de `main()` |
+| 🔴 Crítico | `agents/` | Falta `spam_agent.py` e entrada de orquestração (UserProxyAgent + GroupChat) |
+| 🟡 Aviso | `*_agent.py` | `register_function` deprecated no AutoGen ≥ 0.2; funções sem type annotations |
+| 🟡 Aviso | `make_aggregates.py` + `exports_bi.py` | Agregação por canal duplicada em dois arquivos |
+| 🟡 Aviso | `config.py` | Ollama/qwen2 pode não suportar function calling do AutoGen |
