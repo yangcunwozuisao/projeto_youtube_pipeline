@@ -277,11 +277,10 @@ def main(use_embeddings: bool = True):
 
     counts = df["spam_label"].value_counts()
     total  = len(df)
-    print("\n── Resultado da detecção ──────────────────────────────")
+    print("\nResultado da detecção ")
     for label, count in counts.items():
         pct = count / total * 100
         print(f"  {label:<12} {count:>6}  ({pct:.1f}%)")
-    print("────────────────────────────────────────────────────────\n")
 
     df.to_csv(OUT, index=False, encoding="utf-8-sig")
     print(f"[spam] salvo: {OUT}  ({len(df)} linhas)")

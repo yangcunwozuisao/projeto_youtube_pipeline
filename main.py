@@ -110,7 +110,7 @@ if not is_done("spam"):
 else:
     print(" Step 9 SKIPPED")
 
-print("\n Pipeline finished successfully!\n")
+print("\n Pipeline finalizado sucessivo!\n")
 
 # MongoDB
 if not is_done("mongo"):

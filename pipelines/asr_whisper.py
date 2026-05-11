@@ -21,11 +21,11 @@ from tqdm import tqdm
 print("[debug] python:", sys.executable)
 print("[debug] sistema:", platform.system())
 
-# ── Configuração de extensão por plataforma ───────────────────────────────────
+# Configuração de extensão por plataforma
 _IS_WINDOWS = platform.system() == "Windows"
 _EXE_EXT    = ".exe" if _IS_WINDOWS else ""
 
-# ── Preparação do ffmpeg ──────────────────────────────────────────────────────
+#Preparação do ffmpeg
 try:
     import imageio_ffmpeg as iioff
 
@@ -59,7 +59,7 @@ except Exception as e:
     print("       Rode: pip install imageio-ffmpeg")
     sys.exit(1)
 
-# ── Verificação do yt-dlp ─────────────────────────────────────────────────────
+# Verificação do yt-dlp
 try:
     import yt_dlp
     print("[debug] yt_dlp version:", getattr(yt_dlp, "__version__", "unknown"))
@@ -70,7 +70,7 @@ except Exception as e:
 
 import whisper
 
-# ── Constantes ────────────────────────────────────────────────────────────────
+# Constantes
 AUDIO_DIR    = Path("data/audio")
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -79,9 +79,6 @@ USE_CPU      = True
 DEFAULT_TOP_N = 20
 
 AUDIO_EXTS   = [".webm", ".m4a", ".opus", ".mp3", ".wav", ".flac"]
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def get_top_n() -> int:
     raw = os.getenv("ASR_TOP_N")
@@ -120,7 +117,6 @@ def ytdlp_best_audio(video_id: str) -> Path:
 
     return candidates[0]
 
-
 def load_existing_transcripts() -> pd.DataFrame:
     out_path = Path("outputs/transcripts.csv")
     if not out_path.exists():
@@ -134,9 +130,6 @@ def load_existing_transcripts() -> pd.DataFrame:
     except Exception as e:
         print(f"[warn] não consegui ler transcripts.csv existente: {e}")
         return pd.DataFrame(columns=["videoId", "language", "text"])
-
-
-# ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     # Fonte de vídeos: prefere top50, senão usa o CSV bruto
@@ -183,8 +176,7 @@ def main() -> None:
         for vid in tqdm(vids, desc="Transcrevendo"):
             try:
                 audio_file = ytdlp_best_audio(vid)
-                result     = whisper.transcribe(model, str(audio_file), **transcribe_kwargs)
-
+                result = model.transcribe(str(audio_file), **transcribe_kwargs)
                 if result and result.get("text"):
                     rows.append({
                         "videoId":  vid,

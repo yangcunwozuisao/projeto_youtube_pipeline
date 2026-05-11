@@ -1,7 +1,7 @@
 import re
 import pandas as pd
 from pathlib import Path
-from shared_models import ner_model
+from shared_models import get_ner_model
 
 LABELS = ["brand", "series", "model"]
 
@@ -76,6 +76,8 @@ def rule_model(text):
 def ner_extract(text):
     if not text.strip():
         return []
+
+    ner_model = get_ner_model()
 
     ents = ner_model.predict_entities(
         text,
